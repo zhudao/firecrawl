@@ -189,6 +189,7 @@ export type EngineScrapeResult = {
 
   youtubeTranscriptContent?: any;
   postprocessorsUsed?: string[];
+  warning?: string;
   audioCookies?: BrowserCookie[];
 
   proxyUsed: "basic" | "stealth";
@@ -705,6 +706,7 @@ export async function buildFallbackList(meta: Meta): Promise<
       teamId: meta.internalOptions.teamId ?? null,
       orgId: meta.internalOptions.orgId ?? null,
       blocked,
+      origin: meta.internalOptions.origin ?? null,
       formats: meta.options.formats,
       actions: meta.options.actions,
       headers: meta.options.headers,
@@ -989,6 +991,11 @@ export async function buildFallbackList(meta: Meta): Promise<
       : _engines;
 
   for (const engine of currentEngines) {
+    // Zero data retention scrapes, forced engines included, never use the
+    // Wikipedia engine: they stay on the engines that fetch the page directly.
+    if (engine === "wikipedia" && meta.internalOptions.zeroDataRetention)
+      continue;
+
     // A profile must never fall back to fetching anonymous content. File parsers
     // may consume bytes already fetched by the authenticated browser.
     if (
