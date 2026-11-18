@@ -1,6 +1,8 @@
+// Keep the config import first: it removes an empty OPENAI_BASE_URL from the
+// environment, and @ai-sdk/openai throws on one as soon as it is loaded.
+import { config } from "../config";
 import { createOpenAI } from "@ai-sdk/openai";
 import { wrapLanguageModel, type LanguageModelMiddleware } from "ai";
-import { config } from "../config";
 import { createOllama } from "ollama-ai-provider-v2";
 import { anthropic as keyedAnthropic } from "@ai-sdk/anthropic";
 import { groq } from "@ai-sdk/groq";
@@ -11,6 +13,7 @@ import { deepinfra } from "@ai-sdk/deepinfra";
 import { createVertex } from "@ai-sdk/google-vertex";
 import { withUsageTelemetry } from "./ai-usage-telemetry";
 import { createFederatedAnthropic } from "./anthropic-federation";
+import { createFederatedOpenAI } from "./openai-federation";
 import type { TeamFlags } from "../controllers/v2/types";
 import { isUsOnly } from "./us-only";
 import { UsOnlyUnavailableError } from "../scraper/scrapeURL/error";
@@ -48,11 +51,21 @@ const anthropic =
       )
     : keyedAnthropic;
 
+const openai =
+  !config.OPENAI_API_KEY &&
+  config.OPENAI_IDENTITY_PROVIDER_ID &&
+  config.OPENAI_SERVICE_ACCOUNT_ID
+    ? createFederatedOpenAI(
+        config.OPENAI_IDENTITY_PROVIDER_ID,
+        config.OPENAI_SERVICE_ACCOUNT_ID,
+      )
+    : createOpenAI({
+        apiKey: config.OPENAI_API_KEY,
+        baseURL: config.OPENAI_BASE_URL,
+      });
+
 const providerList: Record<Provider, any> = {
-  openai: createOpenAI({
-    apiKey: config.OPENAI_API_KEY,
-    baseURL: config.OPENAI_BASE_URL,
-  }), //OPENAI_API_KEY
+  openai, //OPENAI_API_KEY or workload identity federation
   ollama: createOllama({
     baseURL: config.OLLAMA_BASE_URL,
   }),
@@ -74,15 +87,22 @@ const providerList: Record<Provider, any> = {
   }),
 };
 
-// Without its own key the US client must not exist: createOpenAI would fall
-// back to the OPENAI_API_KEY environment variable. The endpoint is fixed so no
-// configuration can send US-only traffic elsewhere.
+// Without its own key or service account the US client must not exist:
+// createOpenAI would fall back to the OPENAI_API_KEY environment variable. The
+// endpoint is fixed so no configuration can send US-only traffic elsewhere.
+const usOpenAIBaseURL = "https://us.api.openai.com/v1";
 const usOpenAI = config.OPENAI_US_API_KEY
   ? createOpenAI({
       apiKey: config.OPENAI_US_API_KEY,
-      baseURL: "https://us.api.openai.com/v1",
+      baseURL: usOpenAIBaseURL,
     })
-  : undefined;
+  : config.OPENAI_IDENTITY_PROVIDER_ID && config.OPENAI_US_SERVICE_ACCOUNT_ID
+    ? createFederatedOpenAI(
+        config.OPENAI_IDENTITY_PROVIDER_ID,
+        config.OPENAI_US_SERVICE_ACCOUNT_ID,
+        usOpenAIBaseURL,
+      )
+    : undefined;
 
 const usVertex = createVertex({
   project: "firecrawl",
