@@ -129,14 +129,10 @@ const configSchema = z.object({
   ),
   RESEARCH_PROXY_URL: z.string().url().optional(),
   SEARCH_PLATFORM_URL: z.string().url().optional(),
-  // When true, government search goes to RESEARCH_PROXY_URL, with the
-  // research and developer indexes, instead of SEARCH_PLATFORM_URL.
-  GOV_SEARCH_VIA_RESEARCH_PROXY: emptyStringAsDefault(
-    z.stringbool().default(false),
-  ),
   // When true, a plain web search that the search platform classifies as
-  // government is served through the Government Index. It needs
-  // SEARCH_PLATFORM_URL. Unset or empty, no search is routed.
+  // government is served through the Government Index on RESEARCH_PROXY_URL.
+  // It needs SEARCH_PLATFORM_URL for query classification. Unset or empty, no
+  // search is routed.
   GOV_ROUTING_ENABLED: emptyStringAsDefault(z.stringbool().default(false)),
   // The longest a plain web search waits for the routing decision before the
   // regular web search starts; a decision that takes longer routes nothing.
@@ -152,6 +148,8 @@ const configSchema = z.object({
   LABS_SEARCH_URL: z.string().url().optional(),
   LABS_SEARCH_SECRET: z.string().optional(),
   FRESH_FEED_URL: emptyStringAsUndefined(z.string().url()),
+  FRESH_FEED_CURATED_URL: emptyStringAsUndefined(z.string().url()),
+  FRESH_FEED_GLOBAL_URL: emptyStringAsUndefined(z.string().url()),
 
   // Express
   EXPRESS_TRUST_PROXY: z.coerce.number().optional(),
@@ -606,7 +604,6 @@ const configSchema = z.object({
   // External Services
   PLAYWRIGHT_MICROSERVICE_URL: z.string().optional(),
   HTML_TO_MARKDOWN_SERVICE_URL: z.string().optional(),
-  SMART_SCRAPE_API_URL: z.string().optional(),
 
   // Fire PDF (OCR fallback for a % of PDFs)
   FIRE_PDF_ENABLE: z.stringbool().optional(),
@@ -860,6 +857,10 @@ const configSchema = z.object({
     })
     .optional(),
 
+  // Per-request internal JWTs; replaces AGENT_INTEROP_SECRET once rolled out.
+  INTERNAL_JWT_ENABLED: z.stringbool().default(false),
+  INTERNAL_JWT_PUBLIC_KEYS: z.string().optional(),
+
   // Wikipedia Enterprise API
   WIKIPEDIA_ENTERPRISE_USERNAME: z.string().optional(),
   WIKIPEDIA_ENTERPRISE_PASSWORD: z.string().optional(),
@@ -900,13 +901,6 @@ const validatedConfigSchema = configSchema.superRefine((value, context) => {
       path: ["GOV_ROUTING_ENABLED"],
       message:
         "GOV_ROUTING_ENABLED needs SEARCH_PLATFORM_URL: set it, or turn routing off",
-    });
-  }
-  if (value.GOV_SEARCH_VIA_RESEARCH_PROXY && !value.RESEARCH_PROXY_URL) {
-    context.addIssue({
-      code: "custom",
-      path: ["GOV_SEARCH_VIA_RESEARCH_PROXY"],
-      message: "GOV_SEARCH_VIA_RESEARCH_PROXY needs RESEARCH_PROXY_URL",
     });
   }
   for (const error of getMcpActionLogConfigErrors(value)) {
